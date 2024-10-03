@@ -1,7 +1,6 @@
 package main
 
 import (
-	"bytes"
 	"io"
 
 	"fmt"
@@ -12,7 +11,7 @@ import (
 	"net/url"
 
 	"github.com/rdcarranza/ipwan-go/src/controladores/env"
-	"github.com/rdcarranza/ipwan-go/src/controladores/login"
+	"github.com/rdcarranza/ipwan-go/src/controladores/ipwan"
 )
 
 type Response struct {
@@ -38,28 +37,6 @@ func main() {
 	}
 
 	dir_host, _ := env.GetEnv("dir_host", env_)
-	user_host, _ := env.GetEnv("user_host", env_)
-	pass_host, _ := env.GetEnv("pass_host", env_)
-
-	pass := login.Base64encode(pass_host)
-	//CONSULTA
-
-	// Datos de la solicitud
-	reqBody := login.Request{
-		Username:      user_host,
-		Password:      pass,
-		Password_type: 4,
-	}
-
-	//jsonData, err := json.Marshal(reqBody)
-	data, err := login.Object2xml(reqBody)
-	if err != nil {
-		panic(err)
-	}
-	log.Println("xmldata = \n", data)
-
-	urlLogin := "http://" + dir_host + "/api/user/login"
-	log.Println("URL: " + urlLogin)
 
 	// Crear un nuevo cookie jar
 	jar, _ := cookiejar.New(nil)
@@ -69,18 +46,20 @@ func main() {
 		Jar: jar,
 	}
 
-	r0, _ := client.Get("http://192.168.253.250")
+	r0, _ := client.Get("http://" + dir_host)
 	defer r0.Body.Close()
-	// Imprimir las cookies obtenidas
 
+	// Imprimir las cookies obtenidas
 	/*for _, cookie := range jar.Cookies(r0.Request.URL) {
 		fmt.Printf("Cookie0: %s=%s\n", cookie.Name, cookie.Value)
 	}*/
+
 	cookie := jar.Cookies(r0.Request.URL)
-	fmt.Printf("Cookie0:", cookie)
-	urlString := "http://192.168.253.250/api/monitoring/status"
+	//fmt.Println("\nCookie0: ", cookie) //se imprime la cookie sin formato.
+	urlString := "http://" + dir_host + "/api/monitoring/status"
 	u1, _ := url.Parse(urlString)
-	client.Jar.SetCookies(u1, cookie)
+	client.Jar.SetCookies(u1, cookie) //se carga la cookie en el contexto de la siguiente petición.
+
 	/*
 		u, _ := url.Parse("http://192.168.253.250/api/monitoring/status")
 
@@ -96,81 +75,23 @@ func main() {
 		// Agregar la cookie al cookiejar
 		client.Jar.SetCookies(u, []*http.Cookie{ck})
 	*/
-	r1, _ := client.Get("http://192.168.253.250/api/monitoring/status")
+
+	r1, err := client.Get("http://" + dir_host + "/api/monitoring/status")
+	if err != nil {
+		log.Fatal(err)
+	}
 	defer r1.Body.Close()
-	for _, cookie := range jar.Cookies(r1.Request.URL) {
-		fmt.Printf("Cookie1: %s=%s\n", cookie.Name, cookie.Value)
-	}
 	body1, _ := io.ReadAll(r1.Body)
-	fmt.Println("respuesta1: " + string(body1))
 
-	//client := &http.Client{}
+	//fmt.Println("\nrespuesta1:\n" + string(body1))
 
-	req, err := http.NewRequest("POST", urlLogin, bytes.NewBuffer([]byte(data)))
+	res1, err := ipwan.Xml2object(body1)
 	if err != nil {
-		log.Fatalf("Error creando la solicitud: %v", err)
+		panic(err)
 	}
-	req.Header.Set("Content-Type", "application/xml")
+	fmt.Println("\nRespuesta: \n")
+	fmt.Println("IPv4 WAN: " + res1.WanIpV4)
+	//fmt.Println("IPv6 WAN: " + res1.WanIpV6)
+	fmt.Print("\n")
 
-	// Realizar la solicitud HTTP
-
-	resp, err := client.Do(req)
-	if err != nil {
-		log.Fatalf("Error al hacer la solicitud: %v", err)
-	}
-	defer resp.Body.Close()
-
-	// Imprimir las cookies obtenidas
-	for _, cookie := range jar.Cookies(resp.Request.URL) {
-		fmt.Printf("Cookie: %s=%s\n", cookie.Name, cookie.Value)
-	}
-
-	body, err := io.ReadAll(resp.Body)
-	if err != nil {
-		log.Fatalf("Error leyendo la respuesta: %v", err)
-	}
-
-	/*
-		resBody, err := login.Xml2object(body)
-		if err != nil {
-			log.Fatalf("Error convirtiendo XML a objeto: %v", err)
-		}
-	*/
-	fmt.Println("respuesta: " + string(body))
-
-	/*
-		 a borrar
-			// Crear la solicitud HTTP
-			endpoint := "http://" + dir_host + "/api/user/login"
-			req, err := http.NewRequest("POST", endpoint, bytes.NewBuffer(jsonData))
-			if err != nil {
-				panic(err)
-			}
-
-			// Agregar el encabezado Content-Type
-			req.Header.Set("Content-Type", "application/json")
-
-			// Realizar la solicitud
-			client := &http.Client{}
-			resp, err := client.Do(req)
-			if err != nil {
-				panic(err)
-			}
-			defer resp.Body.Close()
-
-			// Leer la respuesta
-			body, err := ioutil.ReadAll(resp.Body)
-			if err != nil {
-				panic(err)
-			}
-			fmt.Println("respuesta: " + string(body))
-			// Decodificar la respuesta JSON
-			var response Response
-			err = json.Unmarshal(body, &response)
-			if err != nil {
-				panic(err)
-			}
-
-			fmt.Println(response.Message)
-	*/
 }
